@@ -1,6 +1,7 @@
 package org.nimbleedge.envisedge
 
 import models._
+import messages._
 import scala.concurrent.duration._
 import scala.collection.mutable.{Map => MutableMap}
 
@@ -26,6 +27,7 @@ object Aggregator {
     private final case class TrainerTerminated(actor: ActorRef[Trainer.Command], traId: TrainerIdentifier)
         extends Aggregator.Command
 
+    
     // TODO
     // Add messages here
 }
@@ -33,6 +35,7 @@ object Aggregator {
 class Aggregator(context: ActorContext[Aggregator.Command], aggId: AggregatorIdentifier) extends AbstractBehavior[Aggregator.Command](context) {
     import Aggregator._
     import Orchestrator.JobSubmit
+    import FLSystemManager.StartCycle
     import FLSystemManager.{ RequestTrainer, TrainerRegistered, RequestAggregator, AggregatorRegistered, RequestRealTimeGraph }
 
     // TODO
@@ -43,6 +46,7 @@ class Aggregator(context: ActorContext[Aggregator.Command], aggId: AggregatorIde
 
     // List of trainers which are children of this aggregator
     var trainerIdsToRef : MutableMap[TrainerIdentifier, ActorRef[Trainer.Command]] = MutableMap.empty
+
 
     context.log.info("Aggregator {} started", aggId.toString())
 
@@ -71,6 +75,47 @@ class Aggregator(context: ActorContext[Aggregator.Command], aggId: AggregatorIde
                 aggregatorIdsToRef += aggregatorId -> actorRef
                 actorRef
         }
+    }
+
+    def getTrainerHistory() : MutableMap[TrainerIdentifier,TrainerHistory] = {
+        // This map will contain all trainers history throughout. 
+        // Not specific to one FL cycle.
+        // will be stored and retrieved from AWS-S3
+        
+        var trainerHistoryToRef : MutableMap[TrainerIdentifier, TrainerHistory] = MutableMap.empty
+        
+        // TODO
+        // Retrieve history here from S3
+        // This variable will be global and will be saved to S3 db when FL cycle completes
+        var globalTrainerHistory : MutableMap[TrainerIdentifier, TrainerHistory] = MutableMap.empty
+
+        for ((key, value) <- trainerIdsToRef) {
+            if (globalTrainerHistory.contains(key)) {
+                trainerHistoryToRef += key->globalTrainerHistory(key) 
+            } else {
+                globalTrainerHistory += key -> TrainerHistory(numCompletedFLCycle =0 ,numParticipatedFLCycle = 1, modelMerged = MutableMap.empty)
+                trainerHistoryToRef += key -> TrainerHistory(numCompletedFLCycle =0 ,numParticipatedFLCycle = 1, modelMerged = MutableMap.empty)
+            }
+        }
+
+        return trainerHistoryToRef
+    }
+
+    def makeSamplingJobSubmit() : SamplingJobSubmit = {
+        println("In make Sampling message")
+        println(trainerIdsToRef)
+        var sampling_message = SamplingJobSubmit(
+            basic_info = JobSubmitBasic(
+                __type__ = "sampling",
+                job_type = "sampling-jobsubmit",
+                sender_id = "sender-id",
+                receiver_id = "receiver-id"
+            ),
+            trainerList = trainerIdsToRef,
+            trainerHistory = getTrainerHistory()
+        )
+
+        return sampling_message
     }
 
     override def onMessage(msg: Command): Behavior[Command] =
@@ -165,6 +210,21 @@ class Aggregator(context: ActorContext[Aggregator.Command], aggId: AggregatorIde
             case jobMsg @ JobSubmit(_) => 
                 aggregatorIdsToRef.values.foreach((a) => a ! jobMsg)
                 trainerIdsToRef.values.foreach((a) => a ! jobMsg)
+                this
+            
+            case startCycle @ StartCycle(_) => 
+                aggregatorIdsToRef.values.foreach((a) => a ! startCycle)
+                println("Start Cycle Message Received -> Aggregator")
+
+                // Make Sampling Job Submit Message here
+                var sampling_message = makeSamplingJobSubmit()
+                println(sampling_message)
+                // Convert Message to Json String to send via kafka
+                val job = JsonEncoder.serialize(sampling_message)
+                // Send job to all trainers
+                trainerIdsToRef.values.foreach((t) => 
+                    t ! JobSubmit(job)
+                )
                 this
         }
     

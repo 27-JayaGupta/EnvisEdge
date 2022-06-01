@@ -9,5 +9,10 @@ projectDependencies ++= Seq(
   DefinedDependencies.Logging.slf4jBackend,
   DefinedDependencies.AkkaTest.testkit,
   DefinedDependencies.AkkaTest.scalatest,
-  DefinedDependencies.Kafka.kafka
+  DefinedDependencies.Kafka.kafka,
+  DefinedDependencies.Jackson.jackson_core,
+  DefinedDependencies.Jackson.jackson_module,
+  DefinedDependencies.Circe.circe_core,
+  DefinedDependencies.Circe.circe_generic,
+  DefinedDependencies.Circe.circe_parser
 )

@@ -12,6 +12,8 @@ import akka.actor.typed.scaladsl.AbstractBehavior
 import akka.actor.typed.Signal
 import akka.actor.typed.PostStop
 
+import messages._
+
 object Orchestrator {
   def apply(orcId: OrchestratorIdentifier): Behavior[Command] =
     Behaviors.setup(new Orchestrator(_, orcId))
@@ -30,7 +32,7 @@ object Orchestrator {
 
 class Orchestrator(context: ActorContext[Orchestrator.Command], orcId: OrchestratorIdentifier) extends AbstractBehavior[Orchestrator.Command](context) {
   import Orchestrator._
-  import FLSystemManager.{ RequestAggregator, AggregatorRegistered, RequestTrainer, RequestRealTimeGraph }
+  import FLSystemManager.{ RequestAggregator, AggregatorRegistered, RequestTrainer, RequestRealTimeGraph, StartCycle}
 
   // TODO
   // Add state and persistent information
@@ -110,6 +112,10 @@ class Orchestrator(context: ActorContext[Orchestrator.Command], orcId: Orchestra
 
       case jobMsg @ JobSubmit(_) => 
         aggIdToRef.values.foreach((a) => a ! jobMsg)
+        this
+      
+      case startCycle @ StartCycle(_) =>
+        aggIdToRef.values.foreach((a) => a ! startCycle)
         this
     }
   
